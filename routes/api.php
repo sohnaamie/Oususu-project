@@ -10,9 +10,16 @@ Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::middleware('auth:sanctum')->group(function () {
+   Route::get('/groups', [GroupController::class, 'index']);
     Route::post('/groups', [GroupController::class, 'store']);
-});
-});
-Route::get('/user', function (Request $request) {
+    Route::get('/groups/{group}', [GroupController::class, 'show']);
+    Route::get('/groups/{group}/members', [GroupController::class, 'members']);
+    Route::post('/groups/{group}/members', [GroupController::class, 'addMember']);
+
+    Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+    
+});
+});
+

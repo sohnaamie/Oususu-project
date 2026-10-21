@@ -20,4 +20,7 @@ class GroupMember extends Model
     public function user(){
         return $this->belongsTo(User::class);
     }
+    public function contributions(){
+        return $this->hasMany(Contribution::class, 'group_member_id');
+    }
 }
