@@ -15,6 +15,10 @@ Route::prefix('v1')->group(function () {
     Route::get('/groups/{group}', [GroupController::class, 'show']);
     Route::get('/groups/{group}/members', [GroupController::class, 'members']);
     Route::post('/groups/{group}/members', [GroupController::class, 'addMember']);
+    Route::get('/groups/{group}/balances', [GroupController::class, 'balance']);
+    Route::post('/groups/{group}/contributions', [GroupController::class, 'storeContribution']);
+    Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
+    Route::post('/groups/{group}/start', [GroupController::class, 'start']);
 
     Route::get('/user', function (Request $request) {
     return $request->user();

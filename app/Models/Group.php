@@ -18,7 +18,23 @@ class Group extends Model
     public function members(){
         return $this->hasMany(GroupMember::class);
     }
+    
     public function creator(){
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function currentPeriod(): int
+{
+    $start = \Carbon\Carbon::parse($this->start_date);
+
+    if (now()->lt($start)) {
+        return 0; // not started yet
+    }
+
+    $elapsed = $this->frequency === 'weekly'
+        ? $start->diffInWeeks(now())
+        : $start->diffInMonths(now());
+
+    return min((int) floor($elapsed) + 1, $this->total_payments);
+}
 }

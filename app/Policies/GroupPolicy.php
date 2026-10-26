@@ -79,4 +79,42 @@ class GroupPolicy
         : Response::deny('Only a group admin can add members.');
 }
 
+public function start(User $user, Group $group): Response
+{
+    $membership = $group->members()->where('user_id', $user->id)->first();
+
+    if (! $membership) {
+        return Response::denyAsNotFound();
+    }
+
+    return $membership->role === 'admin'
+        ? Response::allow()
+        : Response::deny('Only a group admin can start the group.');
+}
+public function recordContribution(User $user, Group $group): Response
+{
+    $membership = $group->members()->where('user_id', $user->id)->first();
+
+    if (! $membership) {
+        return Response::denyAsNotFound();
+    }
+
+    return $membership->role === 'admin'
+        ? Response::allow()
+        : Response::deny('Only a group admin can record contributions.');
+
+}
+public function recordCorrection(User $user, Group $group): Response
+{
+    $membership = $group->members()->where('user_id', $user->id)->first();
+
+    if (! $membership) {
+        return Response::denyAsNotFound();
+    }
+
+    return $membership->role === 'admin'
+        ? Response::allow()
+        : Response::deny('Only a group admin can record corrections.');
+}
+
 }
