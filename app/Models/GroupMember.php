@@ -23,4 +23,8 @@ class GroupMember extends Model
     public function contributions(){
         return $this->hasMany(Contribution::class, 'group_member_id');
     }
+
+    public function turns() {
+         return $this->hasMany(Turn::class);
+          }
 }

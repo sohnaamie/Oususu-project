@@ -6,6 +6,7 @@ use App\Models\Contribution;
 use App\Models\Correction;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -69,9 +70,17 @@ class GroupService
             }
 
             if ($group->payout_type === 'rotating') {
-                foreach ($members->values() as $index => $member) {
-                    $member->turn_order = $index + 1;
-                    $member->save();
+                $slots = $members
+                    ->flatMap(fn ($m) => array_fill(0, $m->number_of_shares, $m))
+                    ->shuffle()
+                    ->values();
+
+                foreach ($slots as $index => $m) {
+                    $turn = new Turn;
+                    $turn->group_id = $group->id;
+                    $turn->group_member_id = $m->id;
+                    $turn->turn_number = $index + 1;
+                    $turn->save();
                 }
             }
 
@@ -89,6 +98,7 @@ class GroupService
     {
         return DB::transaction(function () use ($group, $user, $data) {
             $group = Group::lockForUpdate()->findOrFail($group->id);
+            $this->ensureTurnsCover($group);
 
             if ($group->members()->where('user_id', $user->id)->exists()) {
                 return [
@@ -104,7 +114,13 @@ class GroupService
             $member->role = 'member';
             $member->joined_at = now();
 
-            if ($group->payout_type === 'rotating' && $group->status === 'active') {
+            $openEndedRotatingGroup = $group->payout_type === 'rotating'
+                && $group->status === 'active'
+                && $group->total_payments === null;
+
+            if ($group->payout_type === 'rotating'
+                && $group->status === 'active'
+                && ! $openEndedRotatingGroup) {
                 $from = $group->currentPeriod() + 1;
                 $taken = $group->members()->whereNotNull('turn_order')->pluck('turn_order');
 
@@ -129,6 +145,10 @@ class GroupService
                     'data' => ['message' => 'User is already a member of the group.'],
                     'status' => 409,
                 ];
+            }
+
+            if ($group->payout_type === 'rotating' && $group->status === 'active') {
+                $this->addTurnsFor($group, $member);
             }
 
             return ['data' => $member, 'status' => 201];
@@ -192,11 +212,13 @@ class GroupService
             ->selectRaw('contributions.group_member_id, SUM(corrections.amount) as total')
             ->pluck('total', 'group_member_id');
 
+        $periods = $group->total_payments ?? $group->currentPeriod();
+
         return $group->members()
             ->with('user:id,name')
             ->withSum('contributions as paid', 'amount')
             ->get()
-            ->map(function (GroupMember $member) use ($group, $reversedByMember) {
+            ->map(function (GroupMember $member) use ($group, $reversedByMember, $periods) {
                 $paid = (int) $member->paid;
                 $reversed = (int) ($reversedByMember[$member->id] ?? 0);
 
@@ -207,7 +229,7 @@ class GroupService
                     'reversed' => $reversed,
                     'balance' => $paid - $reversed,
                     'expected' => $group->contribution_amount
-                        * $group->total_payments
+                        * $periods
                         * $member->number_of_shares,
                 ];
             });
@@ -252,5 +274,72 @@ class GroupService
 
             return ['data' => $correction, 'status' => 201];
         });
+    }
+
+    private function addTurnsFor(Group $group, GroupMember $member): void
+    {
+        $fixedUntil = $group->currentPeriod();
+        $next = max((int) $group->turns()->max('turn_number'), $fixedUntil);
+
+        // Create one new turn row per share at the end.
+        for ($i = 0; $i < $member->number_of_shares; $i++) {
+            $turn = new Turn;
+            $turn->group_id = $group->id;
+            $turn->group_member_id = $member->id;
+            $turn->turn_number = ++$next;
+            $turn->save();
+        }
+
+        $future = $group->turns()
+            ->where('turn_number', '>', $fixedUntil)
+            ->orderBy('turn_number')
+            ->get();
+
+        $order = $future->pluck('group_member_id')
+            ->reject(fn ($id) => $id === $member->id)
+            ->values()
+            ->all();
+
+        for ($i = 0; $i < $member->number_of_shares; $i++) {
+            array_splice($order, random_int(0, count($order)), 0, [$member->id]);
+        }
+
+        foreach ($future as $index => $turn) {
+            $turn->group_member_id = $order[$index];
+            $turn->save();
+        }
+    }
+
+    public function ensureTurnsCover(Group $group): void
+    {
+        if ($group->payout_type !== 'rotating' || $group->status !== 'active') {
+            return;
+        }
+
+        $members = $group->members()->get();
+
+        // keep building rounds until there is at least one future turn
+        while ((int) $group->turns()->max('turn_number') <= $group->currentPeriod()) {
+            $slots = $members
+                ->flatMap(fn ($m) => array_fill(0, $m->number_of_shares, $m))
+                ->shuffle()
+                ->values();
+
+            if ($slots->isEmpty()) {
+                break;
+            }
+
+            $round = (int) $group->turns()->max('round') + 1;
+            $next = (int) $group->turns()->max('turn_number');
+
+            foreach ($slots as $m) {
+                $turn = new Turn;
+                $turn->group_id = $group->id;
+                $turn->group_member_id = $m->id;
+                $turn->turn_number = ++$next;
+                $turn->round = $round;
+                $turn->save();
+            }
+        }
     }
 }

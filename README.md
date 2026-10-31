@@ -46,6 +46,11 @@ php artisan test
 - Corrections as a separate table: keeps the payment history clean and every mistake visible.
 - Constraints and locks, not only PHP checks: PHP can’t see another request happening at the same moment, but the database can.
 
+## Known limitations
+- Members with multiple shares pay per share but currently receive one payout turn. One turn per share is planned.
+- Late joiners owe all past periods (catch-up payments).
+- No payment reminders yet.
+
 ## Example request
 http://127.0.0.1:8000/api/v1/groups/6/members
 [

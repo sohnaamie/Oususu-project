@@ -35,6 +35,11 @@ class Group extends Model
         ? $start->diffInWeeks(now())
         : $start->diffInMonths(now());
 
-    return min((int) floor($elapsed) + 1, $this->total_payments);
+    $period = (int) floor($elapsed) + 1;
+
+    return $this->total_payments ? min($period, $this->total_payments) : $period;
 }
+public function turns() {
+     return $this->hasMany(Turn::class);
+      }
 }

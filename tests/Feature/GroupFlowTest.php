@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -94,17 +94,21 @@ class GroupFlowTest extends TestCase
         $users = User::factory()->count(4)->create();
 
         Sanctum::actingAs($admin);
-        $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $groupId = $this->postJson('/api/v1/groups', $this->groupBody([
+            'total_payments' => null,
+        ]))->json('id');
 
         $this->postJson("/api/v1/groups/$groupId/members", ['email' => $users[0]->email])->assertCreated();
         $this->postJson("/api/v1/groups/$groupId/members", ['email' => $users[1]->email])->assertCreated();
         $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
 
-        $turns = GroupMember::where('group_id', $groupId)->pluck('turn_order')->sort()->values()->all();
-        $this->assertEquals([1, 2, 3], $turns);
+        $this->assertDatabaseCount('turns', 3);
 
         $this->postJson("/api/v1/groups/$groupId/members", ['email' => $users[2]->email])->assertCreated();
-        $this->postJson("/api/v1/groups/$groupId/members", ['email' => $users[3]->email])->assertStatus(422);
+        $this->postJson("/api/v1/groups/$groupId/members", ['email' => $users[3]->email])->assertCreated();
+
+        $turns = Turn::where('group_id', $groupId)->orderBy('turn_number')->pluck('turn_number')->all();
+        $this->assertEquals(range(1, count($turns)), $turns); // no gaps, no repeats
     }
 
     public function test_payment_corrections_and_overpayment(): void

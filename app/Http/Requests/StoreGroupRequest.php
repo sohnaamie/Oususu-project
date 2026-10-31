@@ -26,10 +26,10 @@ class StoreGroupRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100'],
             'contribution_amount' => ['required', 'integer', 'min:1', 'max:1000000'],
-            'frequency' => ['required', Rule::in(['weekly','monthly'])],
-            'total_payments' => ['required', 'integer', 'min:1', 'max:500'],
+            'frequency' => ['required', Rule::in(['weekly', 'monthly'])],
+            'total_payments' => ['required_if:payout_type,lump_sum', 'nullable', 'integer', 'min:1', 'max:500'],
             'start_date' => ['required', 'date', 'after_or_equal:today'],
-            'payout_type' => ['required', Rule::in(['lump_sum','rotating'])],
+            'payout_type' => ['required', Rule::in(['lump_sum', 'rotating'])],
         ];
     }
 }
