@@ -6,11 +6,14 @@ use App\Models\Contribution;
 use App\Models\Correction;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Payout;
 use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Exception\UniqueConstraintViolationException;
+use App\Models\Settlement;
+use App\Models\SettlementLine;
 
 class GroupService
 {
@@ -169,21 +172,18 @@ class GroupService
 
         return DB::transaction(function () use ($group, $data, $user) {
             $member = GroupMember::lockForUpdate()->findOrFail($data['group_member_id']);
-            $expected = $group->contribution_amount * $member->number_of_shares;
-            $ids = Contribution::where('group_member_id', $member->id)
+
+            $ids = Contribution::where('group_id', $group->id)
+                ->where('group_member_id', $member->id)
                 ->where('period_number', $data['period_number'])
                 ->pluck('id');
 
             $paid = (int) Contribution::whereIn('id', $ids)->sum('amount');
             $reversed = (int) Correction::whereIn('contribution_id', $ids)->sum('amount');
-            $remaining = $expected - ($paid - $reversed);
 
-            if ($data['amount'] > $remaining) {
+            if ($ids->isNotEmpty() && ($paid - $reversed) > 0) {
                 return [
-                    'data' => [
-                        'message' => 'This payment is more than what is still owed.',
-                        'remaining' => max($remaining, 0),
-                    ],
+                    'data' => ['message' => 'This member already has an open contribution for this period.'],
                     'status' => 409,
                 ];
             }
@@ -344,65 +344,158 @@ class GroupService
     }
 
     public function recordPayout(Group $group, int $period, int $adminUserId): array
+    {
+        return DB::transaction(function () use ($group, $period, $adminUserId) {
+            $group = Group::lockForUpdate()->findOrFail($group->id);
+
+            if ($group->payout_type !== 'rotating') {
+                return [['message' => 'Payouts are only supported for rotating groups for now.'], 422];
+            }
+
+            if ($group->status !== 'active') {
+                return [['message' => 'This group has not started yet.'], 409];
+            }
+
+            if ($period > $group->currentPeriod()) {
+                return [['message' => 'That period has not started yet.'], 422];
+            }
+
+            if (Payout::where('group_id', $group->id)->where('period_number', $period)->exists()) {
+                return [['message' => 'This period has already been paid out.'], 409];
+            }
+
+            $this->ensureTurnsCover($group);
+
+            $turn = Turn::where('group_id', $group->id)->where('turn_number', $period)->first();
+
+            if (! $turn) {
+                return [['message' => 'No turn exists for that period.'], 422];
+            }
+
+            // pot = payments minus corrections for this period
+            $ids = Contribution::where('group_id', $group->id)
+                ->where('period_number', $period)
+                ->pluck('id');
+
+            $pot = (int) Contribution::whereIn('id', $ids)->sum('amount')
+                 - (int) Correction::whereIn('contribution_id', $ids)->sum('amount');
+
+            $expected = $group->contribution_amount * (int) $group->members()->sum('number_of_shares');
+
+            if ($pot < $expected) {
+                return [[
+                    'message' => 'The pot is not full yet.',
+                    'pot' => $pot,
+                    'expected' => $expected,
+                    'short_by' => $expected - $pot,
+                ], 422];
+            }
+
+            $payout = new Payout;
+            $payout->group_id = $group->id;
+            $payout->period_number = $period;
+            $payout->group_member_id = $turn->group_member_id;
+            $payout->amount = $pot;
+            $payout->recorded_by = $adminUserId;
+            $payout->paid_at = now();
+
+            try {
+                $payout->save();
+            } catch (UniqueConstraintViolationException $e) {
+                return [['message' => 'This period has already been paid out.'], 409];
+            }
+
+            return [[
+                'payout' => $payout,
+                'short_by' => max($expected - $pot, 0),
+            ], 201];
+        });
+    }
+
+    public function settle(Group $group, int $spent, int $adminUserId): array
 {
-    return DB::transaction(function () use ($group, $period, $adminUserId) {
+    return DB::transaction(function () use ($group, $spent, $adminUserId) {
         $group = Group::lockForUpdate()->findOrFail($group->id);
 
-        if ($group->payout_type !== 'rotating') {
-            return [['message' => 'Payouts are only supported for rotating groups for now.'], 422];
+        if ($group->payout_type !== 'lump_sum') {
+            return [['message' => 'Only lump_sum groups are settled this way.'], 422];
         }
 
         if ($group->status !== 'active') {
-            return [['message' => 'This group has not started yet.'], 409];
+            return [['message' => 'This group is not active.'], 409];
         }
 
-        if ($period > $group->currentPeriod()) {
-            return [['message' => 'That period has not started yet.'], 422];
+        if (Settlement::where('group_id', $group->id)->exists()) {
+            return [['message' => 'This group has already been settled.'], 409];
         }
 
-        if (Payout::where('group_id', $group->id)->where('period_number', $period)->exists()) {
-            return [['message' => 'This period has already been paid out.'], 409];
+        $target = (int) $group->target_amount;
+
+        $paid = Contribution::where('group_id', $group->id)
+            ->groupBy('group_member_id')
+            ->selectRaw('group_member_id, SUM(amount) as total')
+            ->pluck('total', 'group_member_id');
+
+        $reversed = Correction::join('contributions', 'corrections.contribution_id', '=', 'contributions.id')
+            ->where('contributions.group_id', $group->id)
+            ->groupBy('contributions.group_member_id')
+            ->selectRaw('contributions.group_member_id as gm, SUM(corrections.amount) as total')
+            ->pluck('total', 'gm');
+
+        $lines = [];
+        $pool = 0;
+
+        foreach ($group->members()->get() as $m) {
+            $net = (int) ($paid[$m->id] ?? 0) - (int) ($reversed[$m->id] ?? 0);
+            $reached = $net >= $target;
+
+            if ($reached) {
+                $pool += $net;
+            }
+
+            $lines[] = ['member' => $m->id, 'outcome' => $reached ? 'items' : 'refund', 'amount' => max($net, 0)];
         }
 
-        $this->ensureTurnsCover($group);
+        $qualified = collect($lines)->where('outcome', 'items')->count();
 
-        $turn = Turn::where('group_id', $group->id)->where('turn_number', $period)->first();
-
-        if (! $turn) {
-            return [['message' => 'No turn exists for that period.'], 422];
+        if ($qualified === 0) {
+            return [['message' => 'No member reached the target, so there is nothing to buy.'], 422];
         }
 
-        // pot = payments minus corrections for this period
-        $ids = Contribution::where('group_id', $group->id)
-            ->where('period_number', $period)
-            ->pluck('id');
-
-        $pot = (int) Contribution::whereIn('id', $ids)->sum('amount')
-             - (int) Correction::whereIn('contribution_id', $ids)->sum('amount');
-
-        if ($pot <= 0) {
-            return [['message' => 'There is no money to pay out for this period.'], 422];
+        if ($spent > $pool) {
+            return [['message' => 'Spent amount is more than the pool.', 'pool' => $pool], 422];
         }
 
-        $expected = $group->contribution_amount * (int) $group->members()->sum('number_of_shares');
-
-        $payout = new Payout();
-        $payout->group_id = $group->id;
-        $payout->period_number = $period;
-        $payout->group_member_id = $turn->group_member_id;
-        $payout->amount = $pot;
-        $payout->recorded_by = $adminUserId;
-        $payout->paid_at = now();
+        $settlement = new Settlement();
+        $settlement->group_id = $group->id;
+        $settlement->pool = $pool;
+        $settlement->spent = $spent;
+        $settlement->qualified_count = $qualified;
+        $settlement->recorded_by = $adminUserId;
+        $settlement->settled_at = now();
 
         try {
-            $payout->save();
+            $settlement->save();
         } catch (UniqueConstraintViolationException $e) {
-            return [['message' => 'This period has already been paid out.'], 409];
+            return [['message' => 'This group has already been settled.'], 409];
         }
 
+        foreach ($lines as $l) {
+            $line = new SettlementLine();
+            $line->settlement_id = $settlement->id;
+            $line->group_member_id = $l['member'];
+            $line->outcome = $l['outcome'];
+            $line->amount = $l['amount'];
+            $line->save();
+        }
+
+        $group->status = 'finished';
+        $group->save();
+
         return [[
-            'payout' => $payout,
-            'short_by' => max($expected - $pot, 0),
+            'settlement' => $settlement,
+            'lines' => $settlement->lines,
+            'left_over' => $pool - $spent,
         ], 201];
     });
 }

@@ -11,7 +11,8 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
     'frequency',
     'total_payments',
     'start_date',
-    'payout_type'
+    'payout_type',
+    'target_amount'
 )]
 class Group extends Model
 {

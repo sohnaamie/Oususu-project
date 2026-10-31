@@ -18,7 +18,7 @@ class GroupFlowTest extends TestCase
     {
         return array_merge([
             'name' => 'Test Osusu',
-            'contribution_amount' => 5000,
+            'contribution_amount' => 50,
             'frequency' => 'weekly',
             'total_payments' => 4,
             'start_date' => now()->toDateString(),
@@ -155,13 +155,13 @@ class GroupFlowTest extends TestCase
     foreach ($memberRows as $m) {
         $this->postJson("/api/v1/groups/$groupId/contributions", [
             'group_member_id' => $m->id, 'period_number' => 1,
-            'amount' => 5000, 'payment_method' => 'cash',
+            'amount' => 50, 'payment_method' => 'cash',
         ])->assertCreated();
     }
 
     $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
         ->assertCreated()
-        ->assertJsonPath('payout.amount', 10000)
+        ->assertJsonPath('payout.amount', 100)
         ->assertJsonPath('short_by', 0);
 
     // paying the same period twice is refused

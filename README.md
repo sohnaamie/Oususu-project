@@ -41,7 +41,7 @@ php artisan test
 | GET | /groups/{id}/balances | member | paid, reversed, balance, expected |
 
 ## Design decisions
-- Money is stored as integers in butut (D50 = 5000)
+- Money is stored as whole dalasi. Decimals are rejected, so amounts like D12.50 are not supported.
 -  Balances calculated, not stored: two copies of the same number can disagree, and then nobody knows which is right.
 - Corrections as a separate table: keeps the payment history clean and every mistake visible.
 - Constraints and locks, not only PHP checks: PHP can’t see another request happening at the same moment, but the database can.

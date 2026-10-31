@@ -23,7 +23,7 @@ class StoreCorrectionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => ['required', 'integer', 'min:1'],
+            'amount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'reason' => ['required', 'string', 'max:255'],
         ];
     }

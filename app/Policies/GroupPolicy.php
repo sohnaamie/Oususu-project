@@ -130,4 +130,30 @@ public function recordPayout(User $user, Group $group): Response
         : Response::deny('Only a group admin can record payouts.');
 }
 
+public function viewArrears(User $user, Group $group): Response
+{
+    $membership = $group->members()->where('user_id', $user->id)->first();
+
+    if (! $membership) {
+        return Response::denyAsNotFound();
+    }
+
+    return $membership->role === 'admin'
+        ? Response::allow()
+        : Response::deny('Only a group admin can see who is behind.');
+}
+
+public function settle(User $user, Group $group): Response
+{
+    $membership = $group->members()->where('user_id', $user->id)->first();
+
+    if (! $membership) {
+        return Response::denyAsNotFound();
+    }
+
+    return $membership->role === 'admin'
+        ? Response::allow()
+        : Response::deny('Only a group admin can settle the group.');
+}
+
 }

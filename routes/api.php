@@ -20,6 +20,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
     Route::post('/groups/{group}/start', [GroupController::class, 'start']);
     Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
+    Route::get('/groups/{group}/behind', [GroupController::class, 'behind']);
+    Route::post('/groups/{group}/settle', [GroupController::class, 'settle']);
 
     Route::get('/user', function (Request $request) {
     return $request->user();

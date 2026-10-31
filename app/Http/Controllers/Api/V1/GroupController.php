@@ -14,6 +14,8 @@ use App\Services\GroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use App\Http\Requests\StorePayoutRequest;
+use App\Models\Correction;
+use App\Http\Requests\SettleGroupRequest;
 
 class GroupController extends Controller
 {
@@ -105,6 +107,48 @@ class GroupController extends Controller
         $request->validated()['period_number'],
         $request->user()->id
     );
+
+    return response()->json($body, $status);
+}
+
+public function behind(Group $group)
+{
+    Gate::authorize('viewArrears', $group);
+
+    $paid = Contribution::where('group_id', $group->id)
+        ->groupBy('group_member_id')
+        ->selectRaw('group_member_id, SUM(amount) as total')
+        ->pluck('total', 'group_member_id');
+
+    $reversed = Correction::join('contributions', 'corrections.contribution_id', '=', 'contributions.id')
+        ->where('contributions.group_id', $group->id)
+        ->groupBy('contributions.group_member_id')
+        ->selectRaw('contributions.group_member_id as gm, SUM(corrections.amount) as total')
+        ->pluck('total', 'gm');
+
+    $target = (int) $group->target_amount;
+
+    $rows = $group->members()->with('user:id,name')->get()->map(function ($m) use ($paid, $reversed, $target) {
+        $net = (int) ($paid[$m->id] ?? 0) - (int) ($reversed[$m->id] ?? 0);
+
+        return [
+            'member_id' => $m->id,
+            'name' => $m->user->name,
+            'net_paid' => $net,
+            'target' => $target,
+            'short_by' => max($target - $net, 0),
+            'reached_target' => $net >= $target,
+        ];
+    });
+
+    return response()->json($rows->where('reached_target', false)->values());
+}
+
+public function settle(SettleGroupRequest $request, Group $group, GroupService $service)
+{
+    Gate::authorize('settle', $group);
+
+    [$body, $status] = $service->settle($group, $request->validated()['spent'], $request->user()->id);
 
     return response()->json($body, $status);
 }
