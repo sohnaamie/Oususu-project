@@ -1,58 +1,116 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Osusu API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel REST API for managing osusu (rotating savings) groups. Built for any type of osusu: weekly or monthly, rotating payout or lump sum at the end (like a Ramadan package).
 
-## About Laravel
+## Features
+- Token authentication (Laravel Sanctum)
+- Groups with configurable amount, frequency, length and payout type
+- Roles per group: admin and member (the same person can be admin in one group and member in another)
+- Random turn order for rotating groups, with late joiners supported
+- Payments stored as an append-only history, balances calculated (never stored)
+- Corrections instead of edits or deletes, so the audit trail is kept
+- Policies: outsiders get 404, plain members get 403
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Tech
+Laravel ______, PHP ______, SQLite (dev)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
+## Run locally
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan serve
+php artisan test
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## Endpoints (all under /api/v1, JSON, send `Accept: application/json`)
 
-## Contributing
+| Method | URL | Who | Purpose |
+|---|---|---|---|
+| POST | /register | anyone | create account, returns token |
+| POST | /login | anyone | returns token |
+| GET | /groups | logged in | your groups |
+| POST | /groups | logged in | create group (you become admin) |
+| GET | /groups/{id} | member | group details |
+| GET | /groups/{id}/members | member | member list |
+| POST | /groups/{id}/members | ______ | add a member by email |
+| POST | /groups/{id}/start | ______ | start group, assign turns |
+| POST | /groups/{id}/contributions | ______ | record a payment |
+| POST | /groups/{id}/contributions/{cid}/corrections | ______ | reverse a payment |
+| GET | /groups/{id}/balances | member | paid, reversed, balance, expected |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Design decisions
+- Money is stored as integers in butut (D50 = 5000)
+-  Balances calculated, not stored: two copies of the same number can disagree, and then nobody knows which is right.
+- Corrections as a separate table: keeps the payment history clean and every mistake visible.
+- Constraints and locks, not only PHP checks: PHP can’t see another request happening at the same moment, but the database can.
 
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Example request
+http://127.0.0.1:8000/api/v1/groups/6/members
+[
+    {
+        "id": 12,
+        "group_id": 6,
+        "user_id": 1,
+        "role": "admin",
+        "turn_order": 1,
+        "status": "active",
+        "number_of_shares": 1,
+        "joined_at": null,
+        "created_at": "2026-10-31T12:31:45.000000Z",
+        "updated_at": "2026-10-31T12:45:37.000000Z",
+        "user": {
+            "id": 1,
+            "name": "Yassin"
+        }
+    },
+    {
+        "id": 13,
+        "group_id": 6,
+        "user_id": 2,
+        "role": "member",
+        "turn_order": 2,
+        "status": "active",
+        "number_of_shares": 1,
+        "joined_at": "2026-10-31 12:41:56",
+        "created_at": "2026-10-31T12:41:56.000000Z",
+        "updated_at": "2026-10-31T12:45:37.000000Z",
+        "user": {
+            "id": 2,
+            "name": "Matarr"
+        }
+    },
+    {
+        "id": 14,
+        "group_id": 6,
+        "user_id": 3,
+        "role": "member",
+        "turn_order": 3,
+        "status": "active",
+        "number_of_shares": 2,
+        "joined_at": "2026-10-31 12:43:53",
+        "created_at": "2026-10-31T12:43:53.000000Z",
+        "updated_at": "2026-10-31T12:45:37.000000Z",
+        "user": {
+            "id": 3,
+            "name": "Aminata"
+        }
+    },
+    {
+        "id": 15,
+        "group_id": 6,
+        "user_id": 5,
+        "role": "member",
+        "turn_order": 4,
+        "status": "active",
+        "number_of_shares": 2,
+        "joined_at": "2026-10-31 12:57:30",
+        "created_at": "2026-10-31T12:57:30.000000Z",
+        "updated_at": "2026-10-31T12:57:30.000000Z",
+        "user": {
+            "id": 5,
+            "name": "Ida"
+        }
+    }
+]
