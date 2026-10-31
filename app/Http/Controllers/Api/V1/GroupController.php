@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\GroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use App\Http\Requests\StorePayoutRequest;
 
 class GroupController extends Controller
 {
@@ -94,4 +95,17 @@ class GroupController extends Controller
 
         return response()->json($result['data'], $result['status']);
     }
+
+    public function storePayout(StorePayoutRequest $request, Group $group, GroupService $service)
+{
+    Gate::authorize('recordPayout', $group);
+
+    [$body, $status] = $service->recordPayout(
+        $group,
+        $request->validated()['period_number'],
+        $request->user()->id
+    );
+
+    return response()->json($body, $status);
+}
 }

@@ -19,6 +19,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/groups/{group}/contributions', [GroupController::class, 'storeContribution']);
     Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
     Route::post('/groups/{group}/start', [GroupController::class, 'start']);
+    Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
 
     Route::get('/user', function (Request $request) {
     return $request->user();

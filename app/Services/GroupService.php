@@ -342,4 +342,68 @@ class GroupService
             }
         }
     }
+
+    public function recordPayout(Group $group, int $period, int $adminUserId): array
+{
+    return DB::transaction(function () use ($group, $period, $adminUserId) {
+        $group = Group::lockForUpdate()->findOrFail($group->id);
+
+        if ($group->payout_type !== 'rotating') {
+            return [['message' => 'Payouts are only supported for rotating groups for now.'], 422];
+        }
+
+        if ($group->status !== 'active') {
+            return [['message' => 'This group has not started yet.'], 409];
+        }
+
+        if ($period > $group->currentPeriod()) {
+            return [['message' => 'That period has not started yet.'], 422];
+        }
+
+        if (Payout::where('group_id', $group->id)->where('period_number', $period)->exists()) {
+            return [['message' => 'This period has already been paid out.'], 409];
+        }
+
+        $this->ensureTurnsCover($group);
+
+        $turn = Turn::where('group_id', $group->id)->where('turn_number', $period)->first();
+
+        if (! $turn) {
+            return [['message' => 'No turn exists for that period.'], 422];
+        }
+
+        // pot = payments minus corrections for this period
+        $ids = Contribution::where('group_id', $group->id)
+            ->where('period_number', $period)
+            ->pluck('id');
+
+        $pot = (int) Contribution::whereIn('id', $ids)->sum('amount')
+             - (int) Correction::whereIn('contribution_id', $ids)->sum('amount');
+
+        if ($pot <= 0) {
+            return [['message' => 'There is no money to pay out for this period.'], 422];
+        }
+
+        $expected = $group->contribution_amount * (int) $group->members()->sum('number_of_shares');
+
+        $payout = new Payout();
+        $payout->group_id = $group->id;
+        $payout->period_number = $period;
+        $payout->group_member_id = $turn->group_member_id;
+        $payout->amount = $pot;
+        $payout->recorded_by = $adminUserId;
+        $payout->paid_at = now();
+
+        try {
+            $payout->save();
+        } catch (UniqueConstraintViolationException $e) {
+            return [['message' => 'This period has already been paid out.'], 409];
+        }
+
+        return [[
+            'payout' => $payout,
+            'short_by' => max($expected - $pot, 0),
+        ], 201];
+    });
+}
 }

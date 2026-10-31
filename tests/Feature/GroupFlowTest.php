@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
+use App\Models\Payout;
 
 class GroupFlowTest extends TestCase
 {
@@ -139,4 +140,41 @@ class GroupFlowTest extends TestCase
         // the period is open again
         $this->postJson("/api/v1/groups/$groupId/contributions", $pay)->assertCreated();
     }
+
+    public function test_payout_goes_to_turn_owner_with_net_pot(): void
+{
+    $admin = User::factory()->create();
+    $member = User::factory()->create();
+
+    Sanctum::actingAs($admin);
+    $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+    $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])->assertCreated();
+    $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
+
+    $memberRows = GroupMember::where('group_id', $groupId)->get();
+    foreach ($memberRows as $m) {
+        $this->postJson("/api/v1/groups/$groupId/contributions", [
+            'group_member_id' => $m->id, 'period_number' => 1,
+            'amount' => 5000, 'payment_method' => 'cash',
+        ])->assertCreated();
+    }
+
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
+        ->assertCreated()
+        ->assertJsonPath('payout.amount', 10000)
+        ->assertJsonPath('short_by', 0);
+
+    // paying the same period twice is refused
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertStatus(409);
+
+    // a future period is refused
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 2])->assertStatus(422);
+
+    // a plain member cannot record payouts
+    Sanctum::actingAs($member);
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertForbidden();
+
+    $turnOwner = \App\Models\Turn::where('group_id', $groupId)->where('turn_number', 1)->value('group_member_id');
+    $this->assertDatabaseHas('payouts', ['group_id' => $groupId, 'period_number' => 1, 'group_member_id' => $turnOwner]);
+}
 }

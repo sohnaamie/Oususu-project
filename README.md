@@ -46,10 +46,14 @@ php artisan test
 - Corrections as a separate table: keeps the payment history clean and every mistake visible.
 - Constraints and locks, not only PHP checks: PHP can’t see another request happening at the same moment, but the database can.
 
-## Known limitations
-- Members with multiple shares pay per share but currently receive one payout turn. One turn per share is planned.
-- Late joiners owe all past periods (catch-up payments).
-- No payment reminders yet.
+
+## Turns
+one turn per share, random order at start, late joiners placed randomly among future turns, and a new round starts automatically when turns run out.
+
+## limit
+Rounds are only built when someone calls addMember (or any endpoint where you add the call). That’s fine for v1.1. Later you can add a weekly scheduled task that calls ensureTurnsCover for every active group, so rounds are always ready even when nobody joins.
+
+
 
 ## Example request
 http://127.0.0.1:8000/api/v1/groups/6/members
