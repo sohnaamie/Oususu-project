@@ -24,6 +24,7 @@ class SettleGroupRequest extends FormRequest
     {
         return [
             'spent' => ['required', 'integer', 'min:0', 'max:100000000'],
+            
         ];
     }
 }

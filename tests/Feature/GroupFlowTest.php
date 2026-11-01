@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 use App\Models\Payout;
+use App\Models\Settlement;
 
 class GroupFlowTest extends TestCase
 {
@@ -24,6 +25,26 @@ class GroupFlowTest extends TestCase
             'start_date' => now()->toDateString(),
             'payout_type' => 'rotating',
         ], $override);
+    }
+
+    private function lumpSumBody(array $o = []): array
+    {
+        return array_merge($this->groupBody([
+            'payout_type' => 'lump_sum',
+            'total_payments' => 4,
+            'target_amount' => 50,
+            'contribution_amount' => 50,
+        ]), $o);
+    }
+
+    private function pay(int $groupId, int $memberId, int $amount, int $period = 1): void
+    {
+        $this->postJson("/api/v1/groups/$groupId/contributions", [
+            'group_member_id' => $memberId,
+            'period_number' => $period,
+            'amount' => $amount,
+            'payment_method' => 'cash',
+        ])->assertCreated();
     }
 
     public function test_user_can_register(): void
@@ -142,39 +163,147 @@ class GroupFlowTest extends TestCase
     }
 
     public function test_payout_goes_to_turn_owner_with_net_pot(): void
-{
-    $admin = User::factory()->create();
-    $member = User::factory()->create();
+    {
+        $admin = User::factory()->create();
+        $member = User::factory()->create();
 
-    Sanctum::actingAs($admin);
-    $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
-    $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])->assertCreated();
-    $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
+        Sanctum::actingAs($admin);
+        $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
 
-    $memberRows = GroupMember::where('group_id', $groupId)->get();
-    foreach ($memberRows as $m) {
-        $this->postJson("/api/v1/groups/$groupId/contributions", [
-            'group_member_id' => $m->id, 'period_number' => 1,
-            'amount' => 50, 'payment_method' => 'cash',
-        ])->assertCreated();
+        $memberRows = GroupMember::where('group_id', $groupId)->get();
+        foreach ($memberRows as $m) {
+            $this->postJson("/api/v1/groups/$groupId/contributions", [
+                'group_member_id' => $m->id, 'period_number' => 1,
+                'amount' => 50, 'payment_method' => 'cash',
+            ])->assertCreated();
+        }
+
+        $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
+            ->assertCreated()
+            ->assertJsonPath('payout.amount', 100)
+            ->assertJsonPath('short_by', 0);
+
+        // paying the same period twice is refused
+        $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertStatus(409);
+
+        // a future period is refused
+        $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 2])->assertStatus(422);
+
+        // a plain member cannot record payouts
+        Sanctum::actingAs($member);
+        $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertForbidden();
+
+        $turnOwner = Turn::where('group_id', $groupId)->where('turn_number', 1)->value('group_member_id');
+        $this->assertDatabaseHas('payouts', [
+            'group_id' => $groupId,
+            'period_number' => 1,
+            'group_member_id' => $turnOwner,
+        ]);
     }
 
-    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
-        ->assertCreated()
-        ->assertJsonPath('payout.amount', 100)
-        ->assertJsonPath('short_by', 0);
+    public function test_settlement_splits_qualified_and_refunded(): void
+    {
+        $admin = User::factory()->create();
+        $m1 = User::factory()->create();
+        $m2 = User::factory()->create();
 
-    // paying the same period twice is refused
-    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertStatus(409);
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->lumpSumBody())->assertCreated()->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $m1->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $m2->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/start")->assertOk();
 
-    // a future period is refused
-    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 2])->assertStatus(422);
+        $ids = GroupMember::where('group_id', $gid)->orderBy('id')->pluck('id');
+        $this->pay($gid, $ids[0], 50);
+        $this->pay($gid, $ids[1], 50);
+        $this->pay($gid, $ids[2], 20);
 
-    // a plain member cannot record payouts
-    Sanctum::actingAs($member);
-    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])->assertForbidden();
+        Sanctum::actingAs($m1);
+        $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])->assertForbidden();
 
-    $turnOwner = \App\Models\Turn::where('group_id', $groupId)->where('turn_number', 1)->value('group_member_id');
-    $this->assertDatabaseHas('payouts', ['group_id' => $groupId, 'period_number' => 1, 'group_member_id' => $turnOwner]);
-}
+        Sanctum::actingAs(User::factory()->create());
+        $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])->assertNotFound();
+
+        Sanctum::actingAs($admin);
+        $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])
+            ->assertCreated()
+            ->assertJsonPath('settlement.pool', 100)
+            ->assertJsonPath('settlement.qualified_count', 2)
+            ->assertJsonPath('left_over', 0);
+
+        $this->assertDatabaseHas('settlement_lines', [
+            'group_member_id' => $ids[2],
+            'outcome' => 'refund',
+            'amount' => 20,
+        ]);
+        $this->assertDatabaseHas('groups', ['id' => $gid, 'status' => 'finished']);
+
+        $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])->assertStatus(409);
+    }
+
+    public function test_settlement_rejects_spending_more_than_pool(): void
+    {
+        $admin = User::factory()->create();
+        $m1 = User::factory()->create();
+
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->lumpSumBody())->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $m1->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/start")->assertOk();
+
+        foreach (GroupMember::where('group_id', $gid)->pluck('id') as $id) {
+            $this->pay($gid, $id, 50);
+        }
+
+        $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 500])->assertStatus(422);
+    }
+
+    public function test_behind_list_is_admin_only(): void
+    {
+        $admin = User::factory()->create();
+        $m1 = User::factory()->create();
+
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->lumpSumBody())->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $m1->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/start")->assertOk();
+
+        $ids = GroupMember::where('group_id', $gid)->orderBy('id')->pluck('id');
+        $this->pay($gid, $ids[0], 50);
+        $this->pay($gid, $ids[1], 20);
+
+        $this->getJson("/api/v1/groups/$gid/behind")
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.short_by', 30);
+
+        Sanctum::actingAs($m1);
+        $this->getJson("/api/v1/groups/$gid/behind")->assertForbidden();
+    }
+
+    public function test_payout_needs_a_full_pot(): void
+    {
+        $admin = User::factory()->create();
+        $m1 = User::factory()->create();
+
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->groupBody(['contribution_amount' => 50]))->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $m1->email])->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/start")->assertOk();
+
+        $ids = GroupMember::where('group_id', $gid)->pluck('id');
+        $this->pay($gid, $ids[0], 50);
+
+        $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 1])->assertStatus(422);
+
+        $this->pay($gid, $ids[1], 50);
+        $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 1])
+            ->assertCreated()
+            ->assertJsonPath('payout.amount', 100);
+
+        $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 1])->assertStatus(409);
+        $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 2])->assertStatus(422);
+    }
 }

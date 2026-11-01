@@ -39,6 +39,9 @@ php artisan test
 | POST | /groups/{id}/contributions | ______ | record a payment |
 | POST | /groups/{id}/contributions/{cid}/corrections | ______ | reverse a payment |
 | GET | /groups/{id}/balances | member | paid, reversed, balance, expected |
+POST /groups/{id}/payouts
+POST /groups/{id}/settle
+GET /groups/{id}/behind
 
 ## Design decisions
 - Money is stored as whole dalasi. Decimals are rejected, so amounts like D12.50 are not supported.
@@ -52,6 +55,9 @@ one turn per share, random order at start, late joiners placed randomly among fu
 
 ## limit
 Rounds are only built when someone calls addMember (or any endpoint where you add the call). That’s fine for v1.1. Later you can add a weekly scheduled task that calls ensureTurnsCover for every active group, so rounds are always ready even when nobody joins.
+
+## Lump sum: 
+one target for the whole group, members who reach it share the bought items, others get an exact refund, one settlement per group, admin-only arrears list.
 
 
 
