@@ -1,18 +1,22 @@
 # Osusu API
 
-A Laravel REST API for managing osusu (rotating savings) groups. Built for any type of osusu: weekly or monthly, rotating payout or lump sum at the end (like a Ramadan package).
+A Laravel REST API for managing osusu (savings) groups. It supports any kind of osusu: weekly or monthly payments, a rotating payout where one member collects each period, or a lump sum at the end (like a Ramadan package).
 
 ## Features
-- Token authentication (Laravel Sanctum)
+- Token authentication (Laravel Sanctum), with rate limits on login and register
 - Groups with configurable amount, frequency, length and payout type
 - Roles per group: admin and member (the same person can be admin in one group and member in another)
-- Random turn order for rotating groups, with late joiners supported
-- Payments stored as an append-only history, balances calculated (never stored)
+- Random turn order for rotating groups, one turn per share, with late joiners supported
+- Payments stored as an append-only history; balances are calculated, never stored
 - Corrections instead of edits or deletes, so the audit trail is kept
+- Rotating payouts (full pot required) and lump sum settlement (items or refunds)
 - Policies: outsiders get 404, plain members get 403
 
 ## Tech
-Laravel ______, PHP ______, SQLite (dev)
+- Laravel 13.35.0
+- PHP 8.5
+- SQLite (development)
+- Tests: PHPUnit (13 tests, 76 assertions)
 
 ## Run locally
 ```bash
@@ -24,7 +28,10 @@ php artisan serve
 php artisan test
 ```
 
-## Endpoints (all under /api/v1, JSON, send `Accept: application/json`)
+To build turn rounds on a schedule, run `php artisan schedule:run` every minute from cron. A single command can also be run by hand: `php artisan osusu:build-rounds`.
+
+## Endpoints
+All routes are under `/api/v1`. Send `Accept: application/json`. Routes marked "logged in" or higher need an `Authorization: Bearer <token>` header.
 
 | Method | URL | Who | Purpose |
 |---|---|---|---|
@@ -34,98 +41,73 @@ php artisan test
 | POST | /groups | logged in | create group (you become admin) |
 | GET | /groups/{id} | member | group details |
 | GET | /groups/{id}/members | member | member list |
-| POST | /groups/{id}/members | ______ | add a member by email |
-| POST | /groups/{id}/start | ______ | start group, assign turns |
-| POST | /groups/{id}/contributions | ______ | record a payment |
-| POST | /groups/{id}/contributions/{cid}/corrections | ______ | reverse a payment |
+| POST | /groups/{id}/members | admin | add a member by email |
+| POST | /groups/{id}/start | admin | start group, assign turns |
+| POST | /groups/{id}/contributions | admin | record a payment |
+| POST | /groups/{id}/contributions/{cid}/corrections | admin | reverse a payment (full or partial) |
 | GET | /groups/{id}/balances | member | paid, reversed, balance, expected |
-POST /groups/{id}/payouts
-POST /groups/{id}/settle
-GET /groups/{id}/behind
+| POST | /groups/{id}/payouts | admin | pay out a period (rotating groups, pot must be full) |
+| POST | /groups/{id}/settle | admin | settle a lump sum group |
+| GET | /groups/{id}/behind | admin | members who have not reached the target |
 
 ## Design decisions
-- Money is stored as whole dalasi. Decimals are rejected, so amounts like D12.50 are not supported.
--  Balances calculated, not stored: two copies of the same number can disagree, and then nobody knows which is right.
-- Corrections as a separate table: keeps the payment history clean and every mistake visible.
-- Constraints and locks, not only PHP checks: PHP can’t see another request happening at the same moment, but the database can.
-
+- **Rules are data, not code.** Amount, frequency, length and payout type are columns, so one system handles every kind of osusu.
+- **Whole dalasi.** Money is stored as whole dalasi integers. Decimals are rejected, so amounts like D12.50 are not supported.
+- **Balances are calculated, not stored.** Two copies of the same number can disagree, and then nobody knows which is right.
+- **Corrections are a separate table.** This keeps the payment history clean and every mistake visible.
+- **Constraints and locks, not only PHP checks.** PHP cannot see another request happening at the same moment, but the database can.
+- **Role belongs to the membership**, not the user.
+- **Mass assignment is blocked** for fields like `created_by`, `status`, `role` and `recorded_by`, so clients cannot set them.
+- **Outsiders get 404**, so they cannot learn which groups exist.
 
 ## Turns
-one turn per share, random order at start, late joiners placed randomly among future turns, and a new round starts automatically when turns run out.
+- One turn per share, in random order at start.
+- Late joiners are placed randomly among future turns, so they do not wait behind earlier members. They owe all past periods (catch-up payments).
+- A new round is built automatically when turns run out, and also by a daily scheduled command.
 
-## limit
-Rounds are only built when someone calls addMember (or any endpoint where you add the call). That’s fine for v1.1. Later you can add a weekly scheduled task that calls ensureTurnsCover for every active group, so rounds are always ready even when nobody joins.
+## Lump sum
+- One target amount for the whole group; every member must reach it.
+- On the day the admin chooses, members who reached the target share the items bought with the pool, and everyone else gets an exact refund.
+- One settlement per group. Only the admin can see who is behind.
 
-## Lump sum: 
-one target for the whole group, members who reach it share the bought items, others get an exact refund, one settlement per group, admin-only arrears list.
-
-
+## Known limitations
+- Money is whole dalasi only.
+- Payouts are only implemented for rotating groups; lump sum uses settlement.
+- No notifications or reminders yet.
+- API tokens do not expire.
+- The scheduler needs a cron line on a real server.
+- The old `turn_order` column on `group_members` is unused (turns live in the `turns` table).
 
 ## Example request
-http://127.0.0.1:8000/api/v1/groups/6/members
-[
-    {
-        "id": 12,
-        "group_id": 6,
-        "user_id": 1,
-        "role": "admin",
-        "turn_order": 1,
-        "status": "active",
-        "number_of_shares": 1,
-        "joined_at": null,
-        "created_at": "2026-10-31T12:31:45.000000Z",
-        "updated_at": "2026-10-31T12:45:37.000000Z",
-        "user": {
-            "id": 1,
-            "name": "Yassin"
-        }
-    },
-    {
-        "id": 13,
-        "group_id": 6,
-        "user_id": 2,
-        "role": "member",
-        "turn_order": 2,
-        "status": "active",
-        "number_of_shares": 1,
-        "joined_at": "2026-10-31 12:41:56",
-        "created_at": "2026-10-31T12:41:56.000000Z",
-        "updated_at": "2026-10-31T12:45:37.000000Z",
-        "user": {
-            "id": 2,
-            "name": "Matarr"
-        }
-    },
-    {
-        "id": 14,
-        "group_id": 6,
-        "user_id": 3,
-        "role": "member",
-        "turn_order": 3,
-        "status": "active",
-        "number_of_shares": 2,
-        "joined_at": "2026-10-31 12:43:53",
-        "created_at": "2026-10-31T12:43:53.000000Z",
-        "updated_at": "2026-10-31T12:45:37.000000Z",
-        "user": {
-            "id": 3,
-            "name": "Aminata"
-        }
-    },
-    {
-        "id": 15,
-        "group_id": 6,
-        "user_id": 5,
-        "role": "member",
-        "turn_order": 4,
-        "status": "active",
-        "number_of_shares": 2,
-        "joined_at": "2026-10-31 12:57:30",
-        "created_at": "2026-10-31T12:57:30.000000Z",
-        "updated_at": "2026-10-31T12:57:30.000000Z",
-        "user": {
-            "id": 5,
-            "name": "Ida"
-        }
-    }
-]
+Create a group (Ramadan package style):
+
+`POST /api/v1/groups`
+```json
+{
+  "name": "Ramadan Package",
+  "contribution_amount": 50,
+  "frequency": "weekly",
+  "total_payments": 35,
+  "start_date": "2027-01-10",
+  "payout_type": "lump_sum",
+  "target_amount": 1750
+}
+```
+
+Response `201`:
+```json
+{
+  "name": "Ramadan Package",
+  "contribution_amount": 50,
+  "frequency": "weekly",
+  "total_payments": 35,
+  "start_date": "2027-01-10",
+  "payout_type": "lump_sum",
+  "target_amount": 1750,
+  "created_by": 1,
+  "status": "forming",
+  "id": 7
+}
+```
+
+A Postman collection with all requests is in `docs/`.
