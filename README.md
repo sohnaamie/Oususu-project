@@ -15,7 +15,7 @@ A Laravel REST API for managing osusu (savings) groups. It supports any kind of 
 ## Tech
 - Laravel 13.35.0
 - PHP 8.5
-- SQLite (development)
+- PostgreSql (Sqlite in test)
 - Tests: PHPUnit (16 tests, 84 assertions)
 
 ## Run locally

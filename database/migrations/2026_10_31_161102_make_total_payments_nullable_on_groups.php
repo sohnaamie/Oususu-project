@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // make_total_payments_nullable_on_groups, inside up()
+       
      Schema::table('groups', function (Blueprint $table) {
     $table->unsignedInteger('total_payments')->nullable()->change();
 });
