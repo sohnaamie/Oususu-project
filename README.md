@@ -111,3 +111,18 @@ Response `201`:
 ```
 
 A Postman collection with all requests is in `docs/`.
+
+
+## Screenshots
+
+### Create a group
+![Create group](docs/screenshots/create-group.png)
+
+### Add a member
+![Add member](docs/screenshots/add-member.png)
+
+### Record a payment
+![Record payment](docs/screenshots/record-contribution.png)
+
+### Balances
+![Balances](docs/screenshots/get-balance.png)
