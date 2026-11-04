@@ -10,6 +10,7 @@ use App\Models\Payout;
 use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Exception\UniqueConstraintViolationException;
 use App\Models\Settlement;
@@ -199,7 +200,7 @@ class GroupService
         });
     }
 
-    public function balance(Group $group): Collection
+    public function balance(Group $group): SupportCollection
     {
         $reversedByMember = Correction::join(
             'contributions',
