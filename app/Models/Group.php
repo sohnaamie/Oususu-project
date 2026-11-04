@@ -42,5 +42,10 @@ class Group extends Model
 }
 public function turns() {
      return $this->hasMany(Turn::class);
-      }
+  }
+
+  public function payouts()
+{
+    return $this->hasMany(Payout::class);
+ }
 }

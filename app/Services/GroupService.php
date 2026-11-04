@@ -118,30 +118,6 @@ class GroupService
             $member->role = 'member';
             $member->joined_at = now();
 
-            $openEndedRotatingGroup = $group->payout_type === 'rotating'
-                && $group->status === 'active'
-                && $group->total_payments === null;
-
-            if ($group->payout_type === 'rotating'
-                && $group->status === 'active'
-                && ! $openEndedRotatingGroup) {
-                $from = $group->currentPeriod() + 1;
-                $taken = $group->members()->whereNotNull('turn_order')->pluck('turn_order');
-
-                $free = $from > $group->total_payments
-                    ? collect()
-                    : collect(range($from, $group->total_payments))->diff($taken);
-
-                if ($free->isEmpty()) {
-                    return [
-                        'data' => ['message' => 'No payout turns are left in this group.'],
-                        'status' => 422,
-                    ];
-                }
-
-                $member->turn_order = $free->random();
-            }
-
             try {
                 $group->members()->save($member);
             } catch (UniqueConstraintViolationException) {

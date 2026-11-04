@@ -25,6 +25,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
     Route::get('/groups/{group}/behind', [GroupController::class, 'behind']);
     Route::post('/groups/{group}/settle', [GroupController::class, 'settle']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/groups/{group}/payouts', [GroupController::class, 'payouts']);
 
     Route::get('/user', function (Request $request) {
     return $request->user();

@@ -8,6 +8,7 @@ use App\Http\Requests\RegisterRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
@@ -38,4 +39,13 @@ class AuthController extends Controller
             'token' => $token,
         ]);
     }
+
+    public function logout(Request $request)
+{
+    $request->user()->currentAccessToken()->delete();
+
+    return response()->json(['message' => 'Logged out.']);
+}
+
+
 }

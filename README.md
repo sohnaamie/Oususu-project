@@ -16,7 +16,7 @@ A Laravel REST API for managing osusu (savings) groups. It supports any kind of 
 - Laravel 13.35.0
 - PHP 8.5
 - SQLite (development)
-- Tests: PHPUnit (13 tests, 76 assertions)
+- Tests: PHPUnit (16 tests, 84 assertions)
 
 ## Run locally
 ```bash
@@ -37,6 +37,7 @@ All routes are under `/api/v1`. Send `Accept: application/json`. Routes marked "
 |---|---|---|---|
 | POST | /register | anyone | create account, returns token |
 | POST | /login | anyone | returns token |
+| POST | /logout | logged in | revoke current token |
 | GET | /groups | logged in | your groups |
 | POST | /groups | logged in | create group (you become admin) |
 | GET | /groups/{id} | member | group details |
@@ -47,6 +48,7 @@ All routes are under `/api/v1`. Send `Accept: application/json`. Routes marked "
 | POST | /groups/{id}/contributions/{cid}/corrections | admin | reverse a payment (full or partial) |
 | GET | /groups/{id}/balances | member | paid, reversed, balance, expected |
 | POST | /groups/{id}/payouts | admin | pay out a period (rotating groups, pot must be full) |
+| GET | /groups/{id}/payouts | member | list payouts for the group |
 | POST | /groups/{id}/settle | admin | settle a lump sum group |
 | GET | /groups/{id}/behind | admin | members who have not reached the target |
 
@@ -74,9 +76,9 @@ All routes are under `/api/v1`. Send `Accept: application/json`. Routes marked "
 - Money is whole dalasi only.
 - Payouts are only implemented for rotating groups; lump sum uses settlement.
 - No notifications or reminders yet.
-- API tokens do not expire.
+- API tokens expire after 7 days (configurable with SANCTUM_EXPIRATION).
 - The scheduler needs a cron line on a real server.
-- The old `turn_order` column on `group_members` is unused (turns live in the `turns` table).
+
 
 ## Example request
 Create a group (Ramadan package style):

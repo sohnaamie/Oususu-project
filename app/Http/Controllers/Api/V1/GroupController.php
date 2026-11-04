@@ -152,4 +152,15 @@ public function settle(SettleGroupRequest $request, Group $group, GroupService $
 
     return response()->json($body, $status);
 }
+
+public function payouts(Group $group)
+{
+    Gate::authorize('view', $group);
+
+    return response()->json(
+        $group->payouts()->with('member.user:id,name')->orderBy('period_number')->get()
+    );
+}
+
+
 }

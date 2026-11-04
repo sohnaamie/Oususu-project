@@ -306,4 +306,59 @@ class GroupFlowTest extends TestCase
         $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 1])->assertStatus(409);
         $this->postJson("/api/v1/groups/$gid/payouts", ['period_number' => 2])->assertStatus(422);
     }
+
+    public function test_logout_revokes_the_token(): void
+{
+    $token = $this->postJson('/api/v1/register', [
+        'name' => 'Aminata', 'email' => 'x@example.com',
+        'password' => 'secret123', 'password_confirmation' => 'secret123',
+    ])->json('token');
+
+    $this->withToken($token)->getJson('/api/v1/groups')->assertOk();
+
+    $this->withToken($token)->postJson('/api/v1/logout')->assertOk();
+
+    $this->app['auth']->forgetGuards();
+    $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
+}
+
+public function test_token_expires_after_seven_days(): void
+{
+    $token = $this->postJson('/api/v1/register', [
+        'name' => 'Aminata', 'email' => 'y@example.com',
+        'password' => 'secret123', 'password_confirmation' => 'secret123',
+    ])->json('token');
+
+    $this->travel(8)->days();
+    $this->app['auth']->forgetGuards();
+
+    $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
+}
+
+public function test_payout_history_is_visible_to_members_only(): void
+{
+    $admin = User::factory()->create();
+    $member = User::factory()->create();
+    $outsider = User::factory()->create();
+
+    Sanctum::actingAs($admin);
+    $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+    $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])->assertCreated();
+
+    $memberRow = GroupMember::where('group_id', $gid)->where('user_id', $member->id)->first();
+    $p = new Payout();
+    $p->group_id = $gid;
+    $p->period_number = 1;
+    $p->group_member_id = $memberRow->id;
+    $p->amount = 100;
+    $p->recorded_by = $admin->id;
+    $p->paid_at = now();
+    $p->save();
+
+    Sanctum::actingAs($member);
+    $this->getJson("/api/v1/groups/$gid/payouts")->assertOk()->assertJsonCount(1);
+
+    Sanctum::actingAs($outsider);
+    $this->getJson("/api/v1/groups/$gid/payouts")->assertNotFound();
+}
 }
