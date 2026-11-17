@@ -9,6 +9,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
+use App\Models\Group;
+
 
 class GroupFlowTest extends TestCase
 {
@@ -208,6 +210,27 @@ class GroupFlowTest extends TestCase
 
         $this->assertDatabaseCount('contributions', 0);
     }
+    public function test_payment_must_equal_contribution_amount(): void
+{
+        $admin = User::factory()->create();
+        $member = User::factory()->create();
+
+        Sanctum::actingAs($admin);
+        $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])
+            ->assertCreated();
+        $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
+
+        $memberId = GroupMember::where('user_id', $member->id)->value('id');
+        $group = Group::find($groupId);
+
+    $this->postJson("/api/v1/groups/{$group->id}/contributions", [
+        'group_member_id' => $memberId,
+        'period_number' => 1,
+        'amount' => $group->contribution_amount - 1,
+        'payment_method' => 'cash',
+    ])->assertStatus(422)->assertJsonValidationErrors(['amount']);
+}
 
     public function test_payout_goes_to_turn_owner_with_net_pot(): void
     {
