@@ -21,6 +21,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/groups/{group}/balances', [GroupController::class, 'balance']);
     Route::post('/groups/{group}/contributions', [GroupController::class, 'storeContribution']);
     Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
+    Route::get('/groups/{group}/contributions', [GroupController::class, 'contributions']);
     Route::post('/groups/{group}/start', [GroupController::class, 'start']);
     Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
     Route::get('/groups/{group}/behind', [GroupController::class, 'behind']);

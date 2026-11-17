@@ -164,22 +164,49 @@ class GroupFlowTest extends TestCase
         $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
 
         $memberId = GroupMember::where('user_id', $member->id)->value('id');
-        $pay = ['group_member_id' => $memberId, 'period_number' => 1, 'amount' => 5000, 'payment_method' => 'cash'];
+        $pay = ['group_member_id' => $memberId, 'period_number' => 1, 'amount' => 50, 'payment_method' => 'cash'];
 
         $contributionId = $this->postJson("/api/v1/groups/$groupId/contributions", $pay)
             ->assertCreated()->json('id');
 
-        // paying the same period again is refused
+        // paying the same period again is rejected
         $this->postJson("/api/v1/groups/$groupId/contributions", $pay)->assertStatus(409);
 
-        // reverse it fully, then a further correction is refused
+        // reverse it fully, then a further correction is rejected
         $this->postJson("/api/v1/groups/$groupId/contributions/$contributionId/corrections",
-            ['amount' => 5000, 'reason' => 'wrong person'])->assertCreated();
+            ['amount' => 50, 'reason' => 'wrong person'])->assertCreated();
+        $this->getJson("/api/v1/groups/$groupId/contributions")
+            ->assertOk()
+            ->assertJsonPath('0.corrections.0.contribution_id', $contributionId);
         $this->postJson("/api/v1/groups/$groupId/contributions/$contributionId/corrections",
             ['amount' => 1, 'reason' => 'again'])->assertStatus(422);
 
         // the period is open again
         $this->postJson("/api/v1/groups/$groupId/contributions", $pay)->assertCreated();
+    }
+
+    public function test_payment_below_contribution_amount_is_rejected(): void
+    {
+        $admin = User::factory()->create();
+        $member = User::factory()->create();
+
+        Sanctum::actingAs($admin);
+        $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])
+            ->assertCreated();
+        $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
+
+        $memberId = GroupMember::where('user_id', $member->id)->value('id');
+
+        $this->postJson("/api/v1/groups/$groupId/contributions", [
+            'group_member_id' => $memberId,
+            'period_number' => 1,
+            'amount' => 49,
+            'payment_method' => 'cash',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['amount']);
+
+        $this->assertDatabaseCount('contributions', 0);
     }
 
     public function test_payout_goes_to_turn_owner_with_net_pot(): void
@@ -238,7 +265,7 @@ class GroupFlowTest extends TestCase
         $ids = GroupMember::where('group_id', $gid)->orderBy('id')->pluck('id');
         $this->pay($gid, $ids[0], 50);
         $this->pay($gid, $ids[1], 50);
-        $this->pay($gid, $ids[2], 20);
+        $this->pay($gid, $ids[2], 50);
 
         Sanctum::actingAs($m1);
         $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])->assertForbidden();
@@ -249,14 +276,14 @@ class GroupFlowTest extends TestCase
         Sanctum::actingAs($admin);
         $this->postJson("/api/v1/groups/$gid/settle", ['spent' => 100])
             ->assertCreated()
-            ->assertJsonPath('settlement.pool', 100)
-            ->assertJsonPath('settlement.qualified_count', 2)
-            ->assertJsonPath('left_over', 0);
+            ->assertJsonPath('settlement.pool', 150)
+            ->assertJsonPath('settlement.qualified_count', 3)
+            ->assertJsonPath('left_over', 50);
 
         $this->assertDatabaseHas('settlement_lines', [
             'group_member_id' => $ids[2],
-            'outcome' => 'refund',
-            'amount' => 20,
+            'outcome' => 'items',
+            'amount' => 50,
         ]);
         $this->assertDatabaseHas('groups', ['id' => $gid, 'status' => 'finished']);
 
@@ -292,12 +319,11 @@ class GroupFlowTest extends TestCase
 
         $ids = GroupMember::where('group_id', $gid)->orderBy('id')->pluck('id');
         $this->pay($gid, $ids[0], 50);
-        $this->pay($gid, $ids[1], 20);
 
         $this->getJson("/api/v1/groups/$gid/behind")
             ->assertOk()
             ->assertJsonCount(1)
-            ->assertJsonPath('0.short_by', 30);
+            ->assertJsonPath('0.short_by', 50);
 
         Sanctum::actingAs($m1);
         $this->getJson("/api/v1/groups/$gid/behind")->assertForbidden();
@@ -403,7 +429,8 @@ public function test_contributions_are_visible_to_members_but_not_outsiders(): v
     Sanctum::actingAs($member);
     $this->getJson("/api/v1/groups/$gid/contributions")
         ->assertOk()
-        ->assertJsonCount(1);
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.member.user.name', $member->name);
 
     Sanctum::actingAs($outsider);
     $this->getJson("/api/v1/groups/$gid/contributions")

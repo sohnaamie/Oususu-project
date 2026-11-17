@@ -28,7 +28,19 @@ class StoreContributionRequest extends FormRequest
             'group_member_id' => ['required',
              'integer', 
             Rule::exists('group_members', 'id')->where('group_id', $groups->id)],
-            'amount' => ['required', 'integer', 'min:1', 'max:100000000'],
+            'amount' => [
+                'required',
+                'integer',
+                'min:1',
+                'max:100000000',
+                function (string $attribute, mixed $value, \Closure $fail) use ($groups): void {
+                    $expected = (int) $groups->contribution_amount;
+
+                    if ((int) $value !== $expected) {
+                        $fail("The amount must be exactly {$expected}.");
+                    }
+                },
+            ],
             'period_number' => ['required', 'integer', 'min:1', 'max:' .$groups->currentPeriod()],
             'payment_method' => ['required', Rule::in(['wave', 'aps', 'cash'])],
         ];

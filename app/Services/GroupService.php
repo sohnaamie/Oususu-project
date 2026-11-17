@@ -147,6 +147,16 @@ class GroupService
             ];
         }
 
+        $amount = (int) $data['amount'];
+        if ($amount !== (int) $group->contribution_amount) {
+            return [
+                'data' => [
+                    'message' => "The amount must be exactly {$group->contribution_amount}.",
+                ],
+                'status' => 422,
+            ];
+        }
+
         return DB::transaction(function () use ($group, $data, $user) {
             $member = GroupMember::lockForUpdate()->findOrFail($data['group_member_id']);
 
@@ -336,7 +346,6 @@ class GroupService
             if ($period > $group->currentPeriod()) {
                 return [['message' => 'That period has not started yet.'], 422];
             }
-
             if (Payout::where('group_id', $group->id)->where('period_number', $period)->exists()) {
                 return [['message' => 'This period has already been paid out.'], 409];
             }

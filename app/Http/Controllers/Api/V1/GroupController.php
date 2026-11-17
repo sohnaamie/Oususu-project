@@ -61,7 +61,15 @@ class GroupController extends Controller
     public function contributions(Group $group)
 {
     Gate::authorize('view', $group);
-    return response()->json($group->contributions()->orderBy('period_number')->get());
+    return response()->json(
+        $group->contributions()
+            ->with([
+                'member.user:id,name',
+                'corrections:id,contribution_id',
+            ])
+            ->orderBy('period_number')
+            ->get()
+    );
 }
 
     
