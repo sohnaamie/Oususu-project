@@ -6,7 +6,6 @@ use App\Models\Group;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
-
 class GroupPolicy
 {
     /**
@@ -24,7 +23,7 @@ class GroupPolicy
     {
         return $group->members()->where('user_id', $user->id)->exists()
         ? Response::allow()
-        :Response::denyAsNotFound();
+        : Response::denyAsNotFound();
     }
 
     /**
@@ -66,94 +65,96 @@ class GroupPolicy
     {
         return false;
     }
+
     public function addMember(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
+
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can add members.');
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can add members.');
-}
+    public function start(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-public function start(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can start the group.');
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can start the group.');
-}
-public function recordContribution(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+    public function recordContribution(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
+
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can record contributions.');
+
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can record contributions.');
+    public function recordCorrection(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-}
-public function recordCorrection(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can record corrections.');
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can record corrections.');
-}
+    public function recordPayout(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-public function recordPayout(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can record payouts.');
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can record payouts.');
-}
+    public function viewArrears(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-public function viewArrears(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can see who is behind.');
     }
 
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can see who is behind.');
-}
+    public function settle(User $user, Group $group): Response
+    {
+        $membership = $group->members()->where('user_id', $user->id)->first();
 
-public function settle(User $user, Group $group): Response
-{
-    $membership = $group->members()->where('user_id', $user->id)->first();
+        if (! $membership) {
+            return Response::denyAsNotFound();
+        }
 
-    if (! $membership) {
-        return Response::denyAsNotFound();
+        return $membership->role === 'admin'
+            ? Response::allow()
+            : Response::deny('Only a group admin can settle the group.');
     }
-
-    return $membership->role === 'admin'
-        ? Response::allow()
-        : Response::deny('Only a group admin can settle the group.');
-}
-
 }

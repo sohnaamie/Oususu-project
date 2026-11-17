@@ -11,10 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-       
-     Schema::table('groups', function (Blueprint $table) {
-    $table->unsignedInteger('total_payments')->nullable()->change();
-});
+
+        Schema::table('groups', function (Blueprint $table) {
+            $table->unsignedInteger('total_payments')->nullable()->change();
+        });
     }
 
     /**

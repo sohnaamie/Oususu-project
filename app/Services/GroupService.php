@@ -7,14 +7,14 @@ use App\Models\Correction;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Payout;
+use App\Models\Settlement;
+use App\Models\SettlementLine;
 use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Exception\UniqueConstraintViolationException;
-use App\Models\Settlement;
-use App\Models\SettlementLine;
 
 class GroupService
 {
@@ -399,90 +399,90 @@ class GroupService
     }
 
     public function settle(Group $group, int $spent, int $adminUserId): array
-{
-    return DB::transaction(function () use ($group, $spent, $adminUserId) {
-        $group = Group::lockForUpdate()->findOrFail($group->id);
+    {
+        return DB::transaction(function () use ($group, $spent, $adminUserId) {
+            $group = Group::lockForUpdate()->findOrFail($group->id);
 
-        if ($group->payout_type !== 'lump_sum') {
-            return [['message' => 'Only lump_sum groups are settled this way.'], 422];
-        }
-
-        if ($group->status !== 'active') {
-            return [['message' => 'This group is not active.'], 409];
-        }
-
-        if (Settlement::where('group_id', $group->id)->exists()) {
-            return [['message' => 'This group has already been settled.'], 409];
-        }
-
-        $target = (int) $group->target_amount;
-
-        $paid = Contribution::where('group_id', $group->id)
-            ->groupBy('group_member_id')
-            ->selectRaw('group_member_id, SUM(amount) as total')
-            ->pluck('total', 'group_member_id');
-
-        $reversed = Correction::join('contributions', 'corrections.contribution_id', '=', 'contributions.id')
-            ->where('contributions.group_id', $group->id)
-            ->groupBy('contributions.group_member_id')
-            ->selectRaw('contributions.group_member_id as gm, SUM(corrections.amount) as total')
-            ->pluck('total', 'gm');
-
-        $lines = [];
-        $pool = 0;
-
-        foreach ($group->members()->get() as $m) {
-            $net = (int) ($paid[$m->id] ?? 0) - (int) ($reversed[$m->id] ?? 0);
-            $reached = $net >= $target;
-
-            if ($reached) {
-                $pool += $net;
+            if ($group->payout_type !== 'lump_sum') {
+                return [['message' => 'Only lump_sum groups are settled this way.'], 422];
             }
 
-            $lines[] = ['member' => $m->id, 'outcome' => $reached ? 'items' : 'refund', 'amount' => max($net, 0)];
-        }
+            if ($group->status !== 'active') {
+                return [['message' => 'This group is not active.'], 409];
+            }
 
-        $qualified = collect($lines)->where('outcome', 'items')->count();
+            if (Settlement::where('group_id', $group->id)->exists()) {
+                return [['message' => 'This group has already been settled.'], 409];
+            }
 
-        if ($qualified === 0) {
-            return [['message' => 'No member reached the target, so there is nothing to buy.'], 422];
-        }
+            $target = (int) $group->target_amount;
 
-        if ($spent > $pool) {
-            return [['message' => 'Spent amount is more than the pool.', 'pool' => $pool], 422];
-        }
+            $paid = Contribution::where('group_id', $group->id)
+                ->groupBy('group_member_id')
+                ->selectRaw('group_member_id, SUM(amount) as total')
+                ->pluck('total', 'group_member_id');
 
-        $settlement = new Settlement();
-        $settlement->group_id = $group->id;
-        $settlement->pool = $pool;
-        $settlement->spent = $spent;
-        $settlement->qualified_count = $qualified;
-        $settlement->recorded_by = $adminUserId;
-        $settlement->settled_at = now();
+            $reversed = Correction::join('contributions', 'corrections.contribution_id', '=', 'contributions.id')
+                ->where('contributions.group_id', $group->id)
+                ->groupBy('contributions.group_member_id')
+                ->selectRaw('contributions.group_member_id as gm, SUM(corrections.amount) as total')
+                ->pluck('total', 'gm');
 
-        try {
-            $settlement->save();
-        } catch (UniqueConstraintViolationException $e) {
-            return [['message' => 'This group has already been settled.'], 409];
-        }
+            $lines = [];
+            $pool = 0;
 
-        foreach ($lines as $l) {
-            $line = new SettlementLine();
-            $line->settlement_id = $settlement->id;
-            $line->group_member_id = $l['member'];
-            $line->outcome = $l['outcome'];
-            $line->amount = $l['amount'];
-            $line->save();
-        }
+            foreach ($group->members()->get() as $m) {
+                $net = (int) ($paid[$m->id] ?? 0) - (int) ($reversed[$m->id] ?? 0);
+                $reached = $net >= $target;
 
-        $group->status = 'finished';
-        $group->save();
+                if ($reached) {
+                    $pool += $net;
+                }
 
-        return [[
-            'settlement' => $settlement,
-            'lines' => $settlement->lines,
-            'left_over' => $pool - $spent,
-        ], 201];
-    });
-}
+                $lines[] = ['member' => $m->id, 'outcome' => $reached ? 'items' : 'refund', 'amount' => max($net, 0)];
+            }
+
+            $qualified = collect($lines)->where('outcome', 'items')->count();
+
+            if ($qualified === 0) {
+                return [['message' => 'No member reached the target, so there is nothing to buy.'], 422];
+            }
+
+            if ($spent > $pool) {
+                return [['message' => 'Spent amount is more than the pool.', 'pool' => $pool], 422];
+            }
+
+            $settlement = new Settlement;
+            $settlement->group_id = $group->id;
+            $settlement->pool = $pool;
+            $settlement->spent = $spent;
+            $settlement->qualified_count = $qualified;
+            $settlement->recorded_by = $adminUserId;
+            $settlement->settled_at = now();
+
+            try {
+                $settlement->save();
+            } catch (UniqueConstraintViolationException $e) {
+                return [['message' => 'This group has already been settled.'], 409];
+            }
+
+            foreach ($lines as $l) {
+                $line = new SettlementLine;
+                $line->settlement_id = $settlement->id;
+                $line->group_member_id = $l['member'];
+                $line->outcome = $l['outcome'];
+                $line->amount = $l['amount'];
+                $line->save();
+            }
+
+            $group->status = 'finished';
+            $group->save();
+
+            return [[
+                'settlement' => $settlement,
+                'lines' => $settlement->lines,
+                'left_over' => $pool - $spent,
+            ], 201];
+        });
+    }
 }

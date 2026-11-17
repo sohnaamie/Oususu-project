@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-         Schema::create('contributions', function (Blueprint $table) {
+        Schema::create('contributions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('group_id')->constrained();
             $table->foreignId('group_member_id')->constrained();
@@ -23,7 +23,6 @@ return new class extends Migration
             $table->timestamps();
         });
     }
-
 
     /**
      * Reverse the migrations.

@@ -11,15 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        
-    Schema::create('turns', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('group_id')->constrained()->cascadeOnDelete();
-    $table->foreignId('group_member_id')->constrained()->cascadeOnDelete();
-    $table->unsignedInteger('turn_number');
-    $table->timestamps();
-    $table->unique(['group_id', 'turn_number']);
-});
+
+        Schema::create('turns', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('group_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('group_member_id')->constrained()->cascadeOnDelete();
+            $table->unsignedInteger('turn_number');
+            $table->timestamps();
+            $table->unique(['group_id', 'turn_number']);
+        });
     }
 
     /**

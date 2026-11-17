@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Database\UniqueConstraintViolationException;
+
 class AddMemberRequest extends FormRequest
 {
     /**
@@ -24,7 +24,7 @@ class AddMemberRequest extends FormRequest
     {
         return [
             'email' => ['required', 'email', 'exists:users,email'],
-            'number_of_shares' => ['sometimes', 'integer', 'min:1','max:10'],
+            'number_of_shares' => ['sometimes', 'integer', 'min:1', 'max:10'],
         ];
     }
 }

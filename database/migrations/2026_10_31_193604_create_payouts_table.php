@@ -12,17 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('payouts', function (Blueprint $table) {
-        $table->id();
-        $table->foreignId('group_id')->constrained();
-        $table->unsignedInteger('period_number');
-        $table->foreignId('group_member_id')->constrained();   // recipient
-        $table->unsignedBigInteger('amount');                  // butut
-        $table->foreignId('recorded_by')->constrained('users');
-        $table->timestamp('paid_at');
-        $table->timestamps();
+            $table->id();
+            $table->foreignId('group_id')->constrained();
+            $table->unsignedInteger('period_number');
+            $table->foreignId('group_member_id')->constrained();   // recipient
+            $table->unsignedBigInteger('amount');                  // butut
+            $table->foreignId('recorded_by')->constrained('users');
+            $table->timestamp('paid_at');
+            $table->timestamps();
 
-        $table->unique(['group_id', 'period_number']);
-    });
+            $table->unique(['group_id', 'period_number']);
+        });
     }
 
     /**

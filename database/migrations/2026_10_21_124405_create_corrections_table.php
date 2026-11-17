@@ -11,14 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-       Schema::create('corrections', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('contribution_id')->constrained();
-    $table->unsignedBigInteger('amount'); 
-    $table->string('reason');
-    $table->foreignId('recorded_by')->constrained('users');
-    $table->timestamps();
-});
+        Schema::create('corrections', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('contribution_id')->constrained();
+            $table->unsignedBigInteger('amount');
+            $table->string('reason');
+            $table->foreignId('recorded_by')->constrained('users');
+            $table->timestamps();
+        });
     }
 
     /**

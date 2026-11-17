@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
@@ -23,9 +23,10 @@ class AuthController extends Controller
             'token' => $token,
         ], 201);
     }
+
     public function login(LoginRequest $request)
     {
-        if (!Auth::attempt($request->validated())) {
+        if (! Auth::attempt($request->validated())) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
@@ -41,11 +42,9 @@ class AuthController extends Controller
     }
 
     public function logout(Request $request)
-{
-    $request->user()->currentAccessToken()->delete();
+    {
+        $request->user()->currentAccessToken()->delete();
 
-    return response()->json(['message' => 'Logged out.']);
-}
-
-
+        return response()->json(['message' => 'Logged out.']);
+    }
 }

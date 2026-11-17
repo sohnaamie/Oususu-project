@@ -1,10 +1,9 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\GroupController;
-
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::middleware('throttle:10,1')->group(function () {
@@ -13,25 +12,25 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware('auth:sanctum')->group(function () {
-   Route::get('/groups', [GroupController::class, 'index']);
-    Route::post('/groups', [GroupController::class, 'store']);
-    Route::get('/groups/{group}', [GroupController::class, 'show']);
-    Route::get('/groups/{group}/members', [GroupController::class, 'members']);
-    Route::post('/groups/{group}/members', [GroupController::class, 'addMember']);
-    Route::get('/groups/{group}/balances', [GroupController::class, 'balance']);
-    Route::post('/groups/{group}/contributions', [GroupController::class, 'storeContribution']);
-    Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
-    Route::get('/groups/{group}/contributions', [GroupController::class, 'contributions']);
-    Route::post('/groups/{group}/start', [GroupController::class, 'start']);
-    Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
-    Route::get('/groups/{group}/behind', [GroupController::class, 'behind']);
-    Route::post('/groups/{group}/settle', [GroupController::class, 'settle']);
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/groups/{group}/payouts', [GroupController::class, 'payouts']);
+        Route::get('/groups', [GroupController::class, 'index']);
+        Route::post('/groups', [GroupController::class, 'store']);
+        Route::get('/groups/{group}', [GroupController::class, 'show']);
+        Route::get('/groups/{group}/members', [GroupController::class, 'members']);
+        Route::post('/groups/{group}/members', [GroupController::class, 'addMember']);
+        Route::get('/groups/{group}/balances', [GroupController::class, 'balance']);
+        Route::post('/groups/{group}/contributions', [GroupController::class, 'storeContribution']);
+        Route::post('/groups/{group}/contributions/{contribution}/corrections', [GroupController::class, 'storeCorrection']);
+        Route::get('/groups/{group}/contributions', [GroupController::class, 'contributions']);
+        Route::post('/groups/{group}/start', [GroupController::class, 'start']);
+        Route::post('/groups/{group}/payouts', [GroupController::class, 'storePayout']);
+        Route::get('/groups/{group}/behind', [GroupController::class, 'behind']);
+        Route::post('/groups/{group}/settle', [GroupController::class, 'settle']);
+        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/groups/{group}/payouts', [GroupController::class, 'payouts']);
 
-    Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
-    
-});
+        Route::get('/user', function (Request $request) {
+            return $request->user();
+        })->middleware('auth:sanctum');
+
+    });
 });

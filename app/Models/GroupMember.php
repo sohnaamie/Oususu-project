@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(
     'group_id',
@@ -13,18 +13,23 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 )]
 class GroupMember extends Model
 {
-
-    public function group(){
+    public function group()
+    {
         return $this->belongsTo(Group::class);
     }
-    public function user(){
+
+    public function user()
+    {
         return $this->belongsTo(User::class);
     }
-    public function contributions(){
+
+    public function contributions()
+    {
         return $this->hasMany(Contribution::class, 'group_member_id');
     }
 
-    public function turns() {
-         return $this->hasMany(Turn::class);
-          }
+    public function turns()
+    {
+        return $this->hasMany(Turn::class);
+    }
 }

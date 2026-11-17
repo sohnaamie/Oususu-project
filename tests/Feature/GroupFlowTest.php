@@ -3,13 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\GroupMember;
+use App\Models\Payout;
 use App\Models\Turn;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
-use App\Models\Payout;
-use App\Models\Settlement;
 
 class GroupFlowTest extends TestCase
 {
@@ -59,28 +58,29 @@ class GroupFlowTest extends TestCase
         $response->assertCreated()->assertJsonStructure(['user', 'token']);
         $response->assertJsonMissingPath('user.password');
     }
+
     public function test_register_rejects_duplicate_email(): void
-   {
-    $user = User::factory()->create(['email' => 'a@example.com']);
-    $this->postJson('/api/v1/register', [
-        'name' => 'Binta',
-        'email' => 'a@example.com',
-        'password' => 'secret123',
-        'password_confirmation' => 'secret123',
-    ])->assertStatus(422)->assertJsonValidationErrors(['email']);
-   }
+    {
+        $user = User::factory()->create(['email' => 'a@example.com']);
+        $this->postJson('/api/v1/register', [
+            'name' => 'Binta',
+            'email' => 'a@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
+    }
 
-     public function test_register_rejects_mismatched_passwords(): void
-   {
-    $this->postJson('/api/v1/register', [
-        'name' => 'Binta',
-        'email' => 'b@example.com',
-        'password' => 'secret123',
-        'password_confirmation' => 'secret1234',
-    ])->assertStatus(422)->assertJsonValidationErrors(['password']);
-   }
+    public function test_register_rejects_mismatched_passwords(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'name' => 'Binta',
+            'email' => 'b@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret1234',
+        ])->assertStatus(422)->assertJsonValidationErrors(['password']);
+    }
 
-     public function test_creating_a_group_makes_creator_admin(): void
+    public function test_creating_a_group_makes_creator_admin(): void
     {
         $user = User::factory()->create();
         Sanctum::actingAs($user);
@@ -354,86 +354,86 @@ class GroupFlowTest extends TestCase
     }
 
     public function test_logout_revokes_the_token(): void
-{
-    $token = $this->postJson('/api/v1/register', [
-        'name' => 'Aminata', 'email' => 'x@example.com',
-        'password' => 'secret123', 'password_confirmation' => 'secret123',
-    ])->json('token');
+    {
+        $token = $this->postJson('/api/v1/register', [
+            'name' => 'Aminata', 'email' => 'x@example.com',
+            'password' => 'secret123', 'password_confirmation' => 'secret123',
+        ])->json('token');
 
-    $this->withToken($token)->getJson('/api/v1/groups')->assertOk();
+        $this->withToken($token)->getJson('/api/v1/groups')->assertOk();
 
-    $this->withToken($token)->postJson('/api/v1/logout')->assertOk();
+        $this->withToken($token)->postJson('/api/v1/logout')->assertOk();
 
-    $this->app['auth']->forgetGuards();
-    $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
-}
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
+    }
 
-public function test_token_expires_after_seven_days(): void
-{
-    $token = $this->postJson('/api/v1/register', [
-        'name' => 'Aminata', 'email' => 'y@example.com',
-        'password' => 'secret123', 'password_confirmation' => 'secret123',
-    ])->json('token');
+    public function test_token_expires_after_seven_days(): void
+    {
+        $token = $this->postJson('/api/v1/register', [
+            'name' => 'Aminata', 'email' => 'y@example.com',
+            'password' => 'secret123', 'password_confirmation' => 'secret123',
+        ])->json('token');
 
-    $this->travel(8)->days();
-    $this->app['auth']->forgetGuards();
+        $this->travel(8)->days();
+        $this->app['auth']->forgetGuards();
 
-    $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
-}
+        $this->withToken($token)->getJson('/api/v1/groups')->assertUnauthorized();
+    }
 
-public function test_payout_history_is_visible_to_members_only(): void
-{
-    $admin = User::factory()->create();
-    $member = User::factory()->create();
-    $outsider = User::factory()->create();
+    public function test_payout_history_is_visible_to_members_only(): void
+    {
+        $admin = User::factory()->create();
+        $member = User::factory()->create();
+        $outsider = User::factory()->create();
 
-    Sanctum::actingAs($admin);
-    $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
-    $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])->assertCreated();
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])->assertCreated();
 
-    $memberRow = GroupMember::where('group_id', $gid)->where('user_id', $member->id)->first();
-    $p = new Payout();
-    $p->group_id = $gid;
-    $p->period_number = 1;
-    $p->group_member_id = $memberRow->id;
-    $p->amount = 100;
-    $p->recorded_by = $admin->id;
-    $p->paid_at = now();
-    $p->save();
+        $memberRow = GroupMember::where('group_id', $gid)->where('user_id', $member->id)->first();
+        $p = new Payout;
+        $p->group_id = $gid;
+        $p->period_number = 1;
+        $p->group_member_id = $memberRow->id;
+        $p->amount = 100;
+        $p->recorded_by = $admin->id;
+        $p->paid_at = now();
+        $p->save();
 
-    Sanctum::actingAs($member);
-    $this->getJson("/api/v1/groups/$gid/payouts")->assertOk()->assertJsonCount(1);
+        Sanctum::actingAs($member);
+        $this->getJson("/api/v1/groups/$gid/payouts")->assertOk()->assertJsonCount(1);
 
-    Sanctum::actingAs($outsider);
-    $this->getJson("/api/v1/groups/$gid/payouts")->assertNotFound();
-}
+        Sanctum::actingAs($outsider);
+        $this->getJson("/api/v1/groups/$gid/payouts")->assertNotFound();
+    }
 
-public function test_contributions_are_visible_to_members_but_not_outsiders(): void
-{
-    $admin = User::factory()->create();
-    $member = User::factory()->create();
-    $outsider = User::factory()->create();
+    public function test_contributions_are_visible_to_members_but_not_outsiders(): void
+    {
+        $admin = User::factory()->create();
+        $member = User::factory()->create();
+        $outsider = User::factory()->create();
 
-    Sanctum::actingAs($admin);
-    $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
-    $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])
-        ->assertCreated();
-    $this->postJson("/api/v1/groups/$gid/start")->assertOk();
+        Sanctum::actingAs($admin);
+        $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+        $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])
+            ->assertCreated();
+        $this->postJson("/api/v1/groups/$gid/start")->assertOk();
 
-    $memberId = GroupMember::where('group_id', $gid)
-        ->where('user_id', $member->id)
-        ->value('id');
+        $memberId = GroupMember::where('group_id', $gid)
+            ->where('user_id', $member->id)
+            ->value('id');
 
-    $this->pay($gid, $memberId, 50);
+        $this->pay($gid, $memberId, 50);
 
-    Sanctum::actingAs($member);
-    $this->getJson("/api/v1/groups/$gid/contributions")
-        ->assertOk()
-        ->assertJsonCount(1)
-        ->assertJsonPath('0.member.user.name', $member->name);
+        Sanctum::actingAs($member);
+        $this->getJson("/api/v1/groups/$gid/contributions")
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.member.user.name', $member->name);
 
-    Sanctum::actingAs($outsider);
-    $this->getJson("/api/v1/groups/$gid/contributions")
-        ->assertNotFound();
-}
+        Sanctum::actingAs($outsider);
+        $this->getJson("/api/v1/groups/$gid/contributions")
+            ->assertNotFound();
+    }
 }

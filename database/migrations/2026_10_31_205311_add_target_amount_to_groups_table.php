@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('groups', function (Blueprint $table) {
-        $table->unsignedBigInteger('target_amount')->nullable();
-});
+            $table->unsignedBigInteger('target_amount')->nullable();
+        });
 
     }
 
@@ -23,7 +23,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('groups', function (Blueprint $table) {
-        $table->dropColumn('target_amount');
-});
+            $table->dropColumn('target_amount');
+        });
     }
 };

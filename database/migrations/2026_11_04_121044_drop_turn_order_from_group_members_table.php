@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('group_members', function (Blueprint $table) {
-             $table->dropColumn('turn_order');
+            $table->dropColumn('turn_order');
         });
     }
 
@@ -22,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('group_members', function (Blueprint $table) {
-             $table->unsignedInteger('turn_order')->nullable();
+            $table->unsignedInteger('turn_order')->nullable();
         });
     }
 };

@@ -11,17 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-       Schema::create('settlements', function (Blueprint $table) {
-          $table->id();
-          $table->foreignId('group_id')->constrained();
-          $table->unsignedBigInteger('pool');            // net paid by qualified members
-          $table->unsignedBigInteger('spent');           // spent on items, entered by admin
-          $table->unsignedInteger('qualified_count');
-          $table->foreignId('recorded_by')->constrained('users');
-          $table->timestamp('settled_at');
-          $table->timestamps();
-         $table->unique('group_id');
-});
+        Schema::create('settlements', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('group_id')->constrained();
+            $table->unsignedBigInteger('pool');            // net paid by qualified members
+            $table->unsignedBigInteger('spent');           // spent on items, entered by admin
+            $table->unsignedInteger('qualified_count');
+            $table->foreignId('recorded_by')->constrained('users');
+            $table->timestamp('settled_at');
+            $table->timestamps();
+            $table->unique('group_id');
+        });
     }
 
     /**
