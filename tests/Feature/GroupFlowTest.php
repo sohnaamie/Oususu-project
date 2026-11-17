@@ -381,4 +381,32 @@ public function test_payout_history_is_visible_to_members_only(): void
     Sanctum::actingAs($outsider);
     $this->getJson("/api/v1/groups/$gid/payouts")->assertNotFound();
 }
+
+public function test_contributions_are_visible_to_members_but_not_outsiders(): void
+{
+    $admin = User::factory()->create();
+    $member = User::factory()->create();
+    $outsider = User::factory()->create();
+
+    Sanctum::actingAs($admin);
+    $gid = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+    $this->postJson("/api/v1/groups/$gid/members", ['email' => $member->email])
+        ->assertCreated();
+    $this->postJson("/api/v1/groups/$gid/start")->assertOk();
+
+    $memberId = GroupMember::where('group_id', $gid)
+        ->where('user_id', $member->id)
+        ->value('id');
+
+    $this->pay($gid, $memberId, 50);
+
+    Sanctum::actingAs($member);
+    $this->getJson("/api/v1/groups/$gid/contributions")
+        ->assertOk()
+        ->assertJsonCount(1);
+
+    Sanctum::actingAs($outsider);
+    $this->getJson("/api/v1/groups/$gid/contributions")
+        ->assertNotFound();
+}
 }

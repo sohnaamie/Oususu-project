@@ -58,6 +58,14 @@ class GroupController extends Controller
         return response()->json($result['data'], $result['status']);
     }
 
+    public function contributions(Group $group)
+{
+    Gate::authorize('view', $group);
+    return response()->json($group->contributions()->orderBy('period_number')->get());
+}
+
+    
+
     public function storeContribution(StoreContributionRequest $request, Group $group)
     {
         Gate::authorize('recordContribution', $group);
