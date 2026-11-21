@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('group_id')->constrained();
             $table->unsignedInteger('period_number');
             $table->foreignId('group_member_id')->constrained();   // recipient
-            $table->unsignedBigInteger('amount');                  // butut
+            $table->unsignedBigInteger('amount');                  //dalasi
             $table->foreignId('recorded_by')->constrained('users');
             $table->timestamp('paid_at');
             $table->timestamps();

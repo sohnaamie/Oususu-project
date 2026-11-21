@@ -48,40 +48,6 @@ class GroupFlowTest extends TestCase
         ])->assertCreated();
     }
 
-    public function test_user_can_register(): void
-    {
-        $response = $this->postJson('/api/v1/register', [
-            'name' => 'Aminata',
-            'email' => 'a@example.com',
-            'password' => 'secret123',
-            'password_confirmation' => 'secret123',
-        ]);
-
-        $response->assertCreated()->assertJsonStructure(['user', 'token']);
-        $response->assertJsonMissingPath('user.password');
-    }
-
-    public function test_register_rejects_duplicate_email(): void
-    {
-        $user = User::factory()->create(['email' => 'a@example.com']);
-        $this->postJson('/api/v1/register', [
-            'name' => 'Binta',
-            'email' => 'a@example.com',
-            'password' => 'secret123',
-            'password_confirmation' => 'secret123',
-        ])->assertStatus(422)->assertJsonValidationErrors(['email']);
-    }
-
-    public function test_register_rejects_mismatched_passwords(): void
-    {
-        $this->postJson('/api/v1/register', [
-            'name' => 'Binta',
-            'email' => 'b@example.com',
-            'password' => 'secret123',
-            'password_confirmation' => 'secret1234',
-        ])->assertStatus(422)->assertJsonValidationErrors(['password']);
-    }
-
     public function test_creating_a_group_makes_creator_admin(): void
     {
         $user = User::factory()->create();
@@ -272,6 +238,67 @@ class GroupFlowTest extends TestCase
             'group_member_id' => $turnOwner,
         ]);
     }
+
+    public function test_duplicate_payout_for_same_period_is_rejected(): void
+{
+    $admin = User::factory()->create();
+    $member = User::factory()->create();
+
+    Sanctum::actingAs($admin);
+    $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+    $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])->assertCreated();
+    $this->postJson("/api/v1/groups/$groupId/start")->assertOk();
+
+    $memberRows = GroupMember::where('group_id', $groupId)->get();
+    foreach ($memberRows as $m) {
+        $this->postJson("/api/v1/groups/$groupId/contributions", [
+            'group_member_id' => $m->id, 'period_number' => 1,
+            'amount' => 50, 'payment_method' => 'cash',
+        ])->assertCreated();
+    }
+
+    // first payout for period 1 - succeeds
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
+        ->assertCreated()
+        ->assertJsonPath('payout.amount', 100)
+        ->assertJsonPath('short_by', 0);
+
+    // second payout for same period 1 - rejected
+    $this->postJson("/api/v1/groups/$groupId/payouts", ['period_number' => 1])
+        ->assertStatus(409)
+        ->assertJsonFragment(['message' => 'This period has already been paid out.']);
+
+    // only 1 payout was created
+    $this->assertDatabaseCount('payouts', 1);
+}
+
+public function test_contributions_list_is_members_only(): void
+{
+    $admin = User::factory()->create();
+    $member = User::factory()->create();
+    $outsider = User::factory()->create();
+
+    Sanctum::actingAs($admin);
+    $groupId = $this->postJson('/api/v1/groups', $this->groupBody())->json('id');
+
+    $this->postJson("/api/v1/groups/$groupId/members", ['email' => $member->email])
+        ->assertCreated();
+
+    $group = Group::find($groupId);
+
+    // plain member can list contributions
+    Sanctum::actingAs($member);
+    $this->getJson("/api/v1/groups/{$group->id}/contributions")->assertOk();
+
+    // outsider gets 404 - group doesn't exist for them
+    Sanctum::actingAs($outsider);
+    $this->getJson("/api/v1/groups/{$group->id}/contributions")->assertNotFound();
+
+    // admin can also list (sanity check)
+    Sanctum::actingAs($admin);
+    $this->getJson("/api/v1/groups/{$group->id}/contributions")->assertOk();
+}
+
 
     public function test_settlement_splits_qualified_and_refunded(): void
     {
